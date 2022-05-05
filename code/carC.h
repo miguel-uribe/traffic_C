@@ -3,11 +3,78 @@
 #include <array>
 #include <vector>
 #include <numeric>
+#include <random>
 #include <algorithm>
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include "parameters.h"
+
+// This is the probability distribution for the cars per second that will enter the system
+double getCarInflux(int factor,int time){
+    double demand=factor*0.0002625850896568391*(1/(1+exp(-(time-6*3600)/(0.5*3600))))*(1.9*exp(-pow(((time-6*3600)/(1.4*3600)),2))+1);
+    return demand;
+}
+
+// This function depends on the time and introduces a certain number of cars using a given probability
+void introduceCars(int factor,int time, std::array<std::vector<int>, Nparam> &carparam, std::array<std::array<int, L>, Nmax> lanes, std::default_random_engine & generator, int &Ncars){
+     /* Parameters List:
+    0: position in x
+    1: position in y
+    2: speed
+    3: gapf, forward gap
+    4: gapfl, forward gap in the lane to the left
+    5: gapbl, backward gap in the lane to the left
+    6: gapfr, forward gap in the lane to the right
+    7: gapbr, backward gap in the lane to the right
+    8: vbefl, speed of the car behind in the left lane
+    9: vbefr, speed of the car behind in the right lane
+    10: acc, the car acceleration
+    11; vfor, the speed of the car ahead
+    12; vforl, the speed of the vehicle ahead in the left lane
+    13; vforr, the speed of the vehicle ahead in the right lane
+    14; tepen, the penalty time
+    15; ID, the car ID
+    16; inittime, the initial counting time
+    */
+    // We first determine how many cars will be introduced
+    std::poisson_distribution<int> distribution (getCarInflux(factor,time));
+    int n = distribution(generator);
+    // introducing the cars
+    int x,y;
+    for (int i = 0; i<n; i++){
+        bool bad = true;
+        while(bad){
+            // the initial position is always cero
+            x = 0;
+            // we generate a random lane
+            y = rand() % Nmax;
+            // now we evaluate whether the position is valid
+            if (lanes[y][x]==1){
+                bad = false;
+                //std::cout<<i<<" "<<x<<" "<<y<<std::endl;
+                carparam[0].push_back(x); // x
+                carparam[1].push_back(y); // y
+                carparam[2].push_back(10); // speed
+                carparam[3].push_back(1000); // gapf
+                carparam[4].push_back(1000); // gapfl
+                carparam[5].push_back(1000); // gapbl
+                carparam[6].push_back(1000); // gapfr
+                carparam[7].push_back(1000); // gapbr
+                carparam[10].push_back(acc); //acc
+                carparam[9].push_back(0); //vbefr
+                carparam[8].push_back(0); //vbefl
+                carparam[11].push_back(1000); //vfor
+                carparam[12].push_back(1000); //vforl
+                carparam[13].push_back(1000); //vforr
+                carparam[14].push_back(0); //tpen
+                carparam[15].push_back(Ncars+i); //ID
+                carparam[16].push_back(-1); //avspeed
+            }
+        }
+    }
+    Ncars = Ncars + n;
+}
 
 // This function randomly populates the system with cars
 void populate(std::array<std::vector<int>, Nparam> &carparam, std::array<std::array<int, L>, Nmax> lanes, const int Ncars){
@@ -66,12 +133,12 @@ void populate(std::array<std::vector<int>, Nparam> &carparam, std::array<std::ar
 
 // This function updates the car array to ensure that the cars are ordered
 void sortcars(std::array<std::vector<int>, Nparam> &carparam, std::vector<int> &index){
-    int Ncars = index.size();
+    int ncars = carparam[0].size();
     // cars are only sorted if there are more than one cars
-    if (Ncars>1){
+    if (ncars>1){
         //std::cout<<"Sorting "<<BUSESPAR[0].size()<<std::endl;
         std::vector<int> idx;
-        for (int i =0; i<Ncars; i++)
+        for (int i =0; i<ncars; i++)
             idx.push_back(i);
        
         //sorting indexes
@@ -88,7 +155,7 @@ void sortcars(std::array<std::vector<int>, Nparam> &carparam, std::vector<int> &
         
         // we now check whether there is a change in order
         if (index!=idx){ // in case there is a change in order
-            std::vector<int> aux(Ncars,0);
+            std::vector<int> aux(ncars,0);
             //std::cout<<"there is a change"<<std::endl;
             // once sorted, we proceed to update all the arrays
             for (int j =0; j<Nparam; j++){
@@ -238,7 +305,7 @@ void calculategaps(std::array<std::vector<int>, Nparam> &carparam, std::array<st
 /* In this version, we check not for the speeds but for the gaps in order to change the lanes, we also check for the safety criterion
 For introduce a probability to breach the safety criterion
 */
-void carchangelane(std::array<std::vector<int>, Nparam> &carparam, std::array<std::array<int, L>, Nmax> V, std::array<std::array<int, L>, Nmax> LC,std::array<std::array<int, L>, Nmax> RC, std::array<std::array<int, L>, Nmax> EL, int TIME, const float pchange, const float pchange_slow, const float psurr, const float psurr_slow ){
+void carchangelane(std::array<std::vector<int>, Nparam> &carparam, std::array<std::array<int, L>, Nmax> V, std::array<std::array<int, L>, Nmax> LC,std::array<std::array<int, L>, Nmax> RC, std::array<std::array<int, L>, Nmax> EL, int TIME, double pchange, double pchange_slow, double psurr, double psurr_slow ){
     int x, lane;
     int Ncars = carparam[0].size();
     // We create a new array with all the new values of the lanes
@@ -261,7 +328,7 @@ void carchangelane(std::array<std::vector<int>, Nparam> &carparam, std::array<st
                             // if (the space in the back is larger than the speed of the car in the back and the space in the front is also enough)
                             if ((carparam[7][i]>carparam[9][i]) && (carparam[6][i]>carparam[2][i])){
                                 // now the car is able to change lanes, we throw the dice to check whether 
-                                float dice = ((double) rand() / (RAND_MAX));
+                                double dice = ((double) rand() / (RAND_MAX));
                                 if (carparam[2][i]>vthres){
                                     if ((dice < pchange)){
                                         newy[i] = lane-1;
@@ -279,7 +346,7 @@ void carchangelane(std::array<std::vector<int>, Nparam> &carparam, std::array<st
                             // Some space in the back is still needed
                             else if(carparam[7][i]>0){
                                 // now the car is able to change lanes, we throw the dice to check whether 
-                                float dice = ((double) rand() / (RAND_MAX));
+                                double dice = ((double) rand() / (RAND_MAX));
                                 if (carparam[2][i]>vthres){
                                     if ((dice < psurr))
                                         newy[i] = lane-1;
@@ -315,7 +382,7 @@ void carchangelane(std::array<std::vector<int>, Nparam> &carparam, std::array<st
                             // if (the space in the back is larger than the speed of the car in the back and the space in the front is also enough)
                             if ((carparam[5][i]>carparam[8][i]) && (carparam[4][i]>carparam[2][i])){
                                 // now the car is able to change lanes, we throw the dice to check whether it does.
-                                float dice = ((double) rand() / (RAND_MAX));
+                                double dice = ((double) rand() / (RAND_MAX));
                                 if (carparam[2][i]>vthres){
                                     if (dice < pchange)
                                         newy[i] = lane+1;
@@ -331,7 +398,7 @@ void carchangelane(std::array<std::vector<int>, Nparam> &carparam, std::array<st
                             // Some space in the back is still needed
                             else if(carparam[5][i]>0){
                                 // now the car is able to change lanes, we throw the dice to check whether 
-                                float dice = ((double) rand() / (RAND_MAX));
+                                double dice = ((double) rand() / (RAND_MAX));
                                 if (carparam[2][i]>vthres){
                                     if ((dice < psurr))
                                         newy[i] = lane+1;
@@ -355,18 +422,12 @@ void carchangelane(std::array<std::vector<int>, Nparam> &carparam, std::array<st
 }
 
 
-
+/*
 // making the cars move
-void caradvance(std::array<std::vector<int>, Nparam> &carparam, std::array<std::array<int, L>, Nmax> V, std::array<std::array<int, L>, Nmax> lanes, int & flow, int & speeds, int & speedcounts, const float p, const float p0){
+void caradvance_period(std::array<std::vector<int>, Nparam> &carparam, std::array<std::array<int, L>, Nmax> V, std::array<std::array<int, L>, Nmax> lanes, int & flow, int & speeds, int & speedcounts, const float p, const float p0){
     float prand;
     int Ncars = carparam[0].size();
     for (int i =0; i<Ncars; i++){
-        /* Not using penalty
-        // only cars out of penaly move
-        if (carparam[14][i]>0){
-            carparam[14][i] = carparam[14][i]-1;  // we reduce the penalty
-        }
-        */
         // we implement the VDR-TCA model of Maerivoet
         // we determine the randomization parameter depending on the speed
         if (carparam[2][i]==0)
@@ -408,5 +469,51 @@ void caradvance(std::array<std::vector<int>, Nparam> &carparam, std::array<std::
         }
     }
 }
+*/
+
+// making the cars move
+int caradvance(std::array<std::vector<int>, Nparam> &carparam, std::array<std::array<int, L>, Nmax> V, std::array<std::array<int, L>, Nmax> lanes, int & flow, double & speeds, double p, double p0, int time){
+    double prand;
+    int Ncars = carparam[0].size();
+    int ncarsout = 0;
+    for (int i =0; i<Ncars; i++){
+        // we implement the VDR-TCA model of Maerivoet
+        // we determine the randomization parameter depending on the speed
+        if (carparam[2][i]==0)
+            prand = p0;
+        else
+            prand = p;
+        // we calculate the new speed, vnew=max(0,min(acc*(v+acc),acc*gap,acc*vmax))
+        carparam[2][i]=std::max(0,std::min(carparam[2][i]+carparam[10][i],std::min(carparam[3][i],V[carparam[1][i]][carparam[0][i]])));
+        // We introduce randomization
+        double r = ((double) rand() / (RAND_MAX));
+        //std::cout<< r <<" "<<prand<<" "<< (r<prand)<<std::endl;
+        if (r<prand){carparam[2][i]= std::max(0,carparam[2][i]-1);}
+
+        // now we update the position
+        carparam[0][i]=carparam[0][i]+carparam[2][i];
+        // checking whether the car leaves the system
+        if (carparam[0][i]>=L){
+            ncarsout+=1;
+            flow+=1; // we update the flow counter
+            speeds+=double(L-xmin)/(time - carparam[16][i]);
+        }
+        // we add the initial time to the database if the car is in the speed window
+        if (carparam[0][i]>=xmin & carparam[16][i]<0){
+            carparam[16][i] = time;
+        }
+    }
+    return ncarsout;
+}
+
+// making the cars move
+void removecars(std::array<std::vector<int>, Nparam> &carparam, int ncarsout){
+     for (int j =0; j<Nparam; j++){
+         for (int i = 0; i <ncarsout; i++){
+             carparam[j].pop_back();
+         }
+    }
+}
+
 
 #endif

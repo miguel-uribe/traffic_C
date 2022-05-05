@@ -17,11 +17,11 @@ app = dash.Dash(__name__)
 
 app.p = 0.2
 app.p0 = 0.5
-app.pchange = 0.2
-app.pchange_slow = 0.4
-app.psurr = 0.1
-app.psurr_slow = 0.3
-app.density = 2
+app.pchange = 0.75
+app.pchange_slow = 0.75
+app.psurr = 0.25
+app.psurr_slow = 0.25
+app.factor = 200
 app.gradient = 100
 
 
@@ -142,13 +142,13 @@ app.layout = html.Div(
                             children = [
                                 html.Div(
                                     children = [
-                                        html.H3(children="Densidad",),
-                                        html.P(children="El número promedio de autos por kilómetro de corredor",),
+                                        html.H3(children="Factor",),
+                                        html.P(children="El número promedio de autos por hora entrando al corredor",),
                                         daq.NumericInput(
-                                            id='density_val',
-                                            value=app.density,
+                                            id='factor_val',
+                                            value=app.factor,
                                             min = 0,
-                                            max = 499,
+                                            max = 4000 ,
                                             size = 80,
                                         )
                                     ],
@@ -160,7 +160,7 @@ app.layout = html.Div(
                                         daq.NumericInput(
                                             id='gradient_val',
                                             value=app.gradient,
-                                            min = 0,
+                                            min = -1000,
                                             max = 2000,
                                             size = 80,
                                         )
@@ -197,7 +197,7 @@ app.layout = html.Div(
         html.Div(id='hidden-pchange_slow', style={'display':'none'}),
         html.Div(id='hidden-psurr', style={'display':'none'}),
         html.Div(id='hidden-psurr_slow', style={'display':'none'}),
-        html.Div(id='hidden-density', style={'display':'none'}),
+        html.Div(id='hidden-factor', style={'display':'none'}),
         html.Div(id='hidden-gradient', style={'display':'none'}),
         html.P(id='message'),
     ]
@@ -264,13 +264,13 @@ def update_p(val):
 
 # callback to update the values 
 @app.callback(
-    Output('hidden-density', 'children'),
-    Input('density_val', 'value')
+    Output('hidden-factor', 'children'),
+    Input('factor_val', 'value')
 )
 def update_p(val):
     #global p
-    app.density = val
-    return str(app.density)
+    app.factor = val
+    return str(app.factor)
 
 # callback to update the values 
 @app.callback(
@@ -284,7 +284,7 @@ def update_p(val):
     # the script is compiled when the executable does not exist
     if not exists('simulation_'+confname+'.exe'):
         print('Recompiling')
-        comp = subprocess.run(['g++','-O2','simulation.cpp','-o','simulation_'+confname])
+        comp = subprocess.run(['g++','-O2','simulation_profile.cpp','-o','simulation_'+confname])
     return str(app.gradient)
 
 
@@ -300,25 +300,25 @@ def displayClick(n):
     if n == 0:
         text = 'No button'
     else:
-        text = 'running simulation for '+ str(app.p) + ' ' + str(app.p0)+ ' ' + str(app.pchange)+ ' ' + str(app.pchange_slow)+ ' ' + str(app.psurr)+ ' ' + str(app.psurr_slow)+ ' ' + str(app.density)+' ' + str(app.gradient)
+        text = 'running simulation for '+ str(app.p) + ' ' + str(app.p0)+ ' ' + str(app.pchange)+ ' ' + str(app.pchange_slow)+ ' ' + str(app.psurr)+ ' ' + str(app.psurr_slow)+ ' ' + str(app.factor)+' ' + str(app.gradient)
 
 
     confname = trafficC.createSystemFiles(app.gradient)
     # we first check whether a simulation has been performed
-    fileout = 'sim_results/sim_results_'+ confname+'_%d_%.2f_%.2f_%.2f_%.2f_%.2f_%.2f.txt'%(app.density, app.p, app.p0, app.pchange, app.pchange_slow, app.psurr, app.psurr_slow) 
+    fileout = 'sim_results/sim_results_'+ confname+'_%d_%.2f_%.2f_%.2f_%.2f_%.2f_%.2f.txt'%(app.factor, app.p, app.p0, app.pchange, app.pchange_slow, app.psurr, app.psurr_slow) 
     if not exists(fileout):
-        trafficC.run_simulation_parallel(30,app.gradient, app.density, app.p, app.p0, app.pchange, app.pchange_slow, app.psurr, app.psurr_slow, True)
+        trafficC.run_simulation_parallel(30,app.gradient, app.factor, app.p, app.p0, app.pchange, app.pchange_slow, app.psurr, app.psurr_slow, True)
 
     # reading the results
     results = np.loadtxt(fileout)
-    dflow = results[1]*3600
+    dflow = results[1]
     fpow = np.floor(np.log10(dflow))
-    dflow = np.round(results[1]*3600/10**fpow,0)*10**fpow
-    flow = np.round(results[0]*3600/10**fpow,0)*10**fpow
-    dspeed = results[3]*3.6
+    dflow = np.round(results[1]/10**fpow,0)*10**fpow
+    flow = np.round(results[0]/10**fpow,0)*10**fpow
+    dspeed = results[3]
     vpow = np.floor(np.log10(dspeed))
-    dspeed = np.round(results[3]*3.6/10**vpow,0)*10**vpow
-    speed = np.round(results[2]*3.6/10**vpow,0)*10**vpow
+    dspeed = np.round(results[3]/10**vpow,0)*10**vpow
+    speed = np.round(results[2]/10**vpow,0)*10**vpow
 
     # loading the data
     Data = np.loadtxt(fileout[:-4]+'_cardata.txt')
@@ -326,10 +326,10 @@ def displayClick(n):
     df['color'] = df['ID']%10
 
     fig = px.scatter(df, x="x", y="y", animation_frame="time", 
-            color="color", animation_group="ID", hover_name="ID", range_x=[xmin,xmax], range_y=[-0.5,5.5])
+            color="color", animation_group="ID", hover_name="ID", range_x=[xmind,xmaxd], range_y=[-0.5,Nmax +0.5])
 
 
-    return [text,'%d $$\pm$$ %d carros/min'%(flow, dflow), '%.1f $$\pm$$ %.1f km/h'%(speed, dspeed), fig]
+    return [text,'%d $$\pm$$ %d carros/hora'%(flow, dflow), '%.1f $$\pm$$ %.1f km/h'%(speed, dspeed), fig]
 
 
 

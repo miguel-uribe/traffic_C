@@ -7,11 +7,10 @@ tpen = 5 # the number of seconds that a car that has changed lane must stay in t
 Nmax = 5  # the maximal number of lanes
 Carmax = 2000 # the maximal number of cars in the system
 DL = 5000 # the total length of the corridor, in m
-Nparam = 16 # the number of parameters per car
-gradient = 30 # The length of the lane dissapareance
+Nparam = 17 # the number of parameters per car
 endgrad = 4000 # The position of the gradient
 vthres = 4 # the speed changing the low speed rules from high speed rules
-xmin = endgrad-1000 # the minimal position where the speed measurements are taken
-xmax = endgrad+200 # the maximal position where the speed measurements are taken
-
+xmin = 1000 # the minimal position where the speed measurements are taken
+xmind = 3000 # the minimal position where the speed measurements are taken
+xmaxd = 4200 # the minimal position where the speed measurements are taken
 

@@ -16,17 +16,20 @@ def createSystemFiles(gradient):
     # now we set the allowed lane changes
     # LNA: Lane not available, this is to close lanes
     # 0, the code, 1, the lane, 2, the position (in m) where the lane first becomes unavailable, 3, the position (in m) where the lane last is unavailable
-    if gradient <= 1000:
-        LCR = [
-            ['LNA',4,(endgrad-2*gradient)/Dx,(DL/Dx)-1],    
-            ['LNA',3,(endgrad-gradient)/Dx,(DL/Dx)-1],
-            ['LNA',2,(endgrad)/Dx,(DL/Dx)-1],
-        ]
-    else: # if the gradient is larger than 1000, the lanes are closed altogether
+    if gradient > 1000: # if the gradient is larger than 1000, the lanes are closed altogether
         LCR = [
             ['LNA',4,0,(DL/Dx)-1],    
             ['LNA',3,0,(DL/Dx)-1],
             ['LNA',2,0,(DL/Dx)-1],
+        ]
+    elif gradient < 0: # if the gradient is negative, all the lanes work
+        LCR = [
+        ]
+    else:
+        LCR = [
+            ['LNA',4,(endgrad-2*gradient)/Dx,(DL/Dx)-1],    
+            ['LNA',3,(endgrad-gradient)/Dx,(DL/Dx)-1],
+            ['LNA',2,(endgrad)/Dx,(DL/Dx)-1],
         ]
     # creating the lane availability file, this is 0 when a lane is not available and 1 when the lane is available
     L = int(DL/Dx) # this is the final length of the corridor in cells
@@ -99,7 +102,6 @@ def createSystemFiles(gradient):
     text = text + 'const int tpen = %d;    // the number of seconds that a car that has surrended pirority will remain stopped\n'%tpen
     text = text + 'const int vthres = %d;    // the speed changing the low speed rules from high speed rules\n'%vthres
     text = text + 'const int xmin = %d;    // the minimal position where the speed measurements are taken\n'%xmin
-    text = text + 'const int xmax = %d;    // the maximal position where the speed measurements are taken\n'%xmax
     text = text + 'const int grad = %d;    // The gradient \n'%gradient
     text = text + '#endif'
 
@@ -125,7 +127,7 @@ def run_simulation(gradient, density, p, p0, pchange, pchange_slow, psurr, psurr
     # the script is compiled when the executable does not exist
     if not exists('simulation_'+confname):
         print('Recompiling')
-        comp = subprocess.run(['g++','-O2','simulation.cpp','-o','simulation_'+confname])
+        comp = subprocess.run(['g++','-O2','simulation_profile.cpp','-o','simulation_'+confname])
 
     # we run the command
     seed = 0
@@ -140,7 +142,7 @@ def run_simulation_parallel(Nsim, gradient, density, p, p0, pchange, pchange_slo
     # the script is compiled when the executable does not exist
     if not exists('simulation_'+confname):
         print('Recompiling')
-        comp = subprocess.run(['g++','-O2','simulation.cpp','-o','simulation_'+confname])
+        comp = subprocess.run(['g++','-O2','simulation_profile.cpp','-o','simulation_'+confname])
 
 
     # running the pool of processes
@@ -163,8 +165,6 @@ def run_simulation_parallel(Nsim, gradient, density, p, p0, pchange, pchange_slo
         time.sleep(0.05)
 
     # now that all the processes are finished we load the data
-    flows = []
-    speeds = []
     for i in range(Nsim):
         filename = 'sim_results/sim_results_'+ confname+'_%d_%.2f_%.2f_%.2f_%.2f_%.2f_%.2f_%d.txt'%(density, p, p0, pchange, pchange_slow, psurr, psurr_slow, i) 
         try:
